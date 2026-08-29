@@ -1,0 +1,21 @@
+{
+  "name": "simple-health-calendar",
+  "version": "1.0.0",
+  "description": "シンプルな体調記録カレンダー",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init-db": "node database.js",
+    "gen-icons": "node scripts/generate-icons.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^6.0.1"
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "keywords": ["health", "calendar", "tracking", "blood-pressure", "weight"],
+  "author": "",
+  "license": "MIT"
+}

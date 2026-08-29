@@ -1,0 +1,276 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* display指定のある要素でもhidden属性を効かせる */
+[hidden] { display: none !important; }
+
+:root {
+  --primary: #00897B;
+  --primary-dark: #00695C;
+  --bg: #F4F7F6;
+  --card: #FFFFFF;
+  --text: #263238;
+  --muted: #78909C;
+  --border: #E0E6E4;
+  --sun: #E53935;
+  --sat: #1E88E5;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 8px calc(16px + env(safe-area-inset-bottom));
+}
+
+/* ---- ヘッダー ---- */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 4px 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-header h1 { font-size: 1.25rem; color: var(--primary-dark); }
+.user-area { display: flex; gap: 6px; align-items: center; }
+
+select, input[type="text"], input[type="number"], input[type="time"] {
+  font-size: 1rem;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--bg); }
+
+/* ---- タブ ---- */
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tab {
+  flex: 1;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: bold;
+}
+
+/* ---- 月ナビ ---- */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.month-nav h2 { font-size: 1.15rem; min-width: 9em; text-align: center; }
+.nav-btn {
+  font-size: 1.4rem;
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  cursor: pointer;
+  line-height: 1;
+}
+.today-btn {
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  background: var(--card);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* ---- カレンダー ---- */
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.weekdays .sun { color: var(--sun); }
+.weekdays .sat { color: var(--sat); }
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.day {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-height: 64px;
+  padding: 4px;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+.day:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+.day.empty { background: transparent; border: none; cursor: default; }
+.day.empty:hover { box-shadow: none; }
+.day.today { border: 2px solid var(--primary); background: #E0F2F1; }
+.day.sun .day-num { color: var(--sun); }
+.day.sat .day-num { color: var(--sat); }
+.day-num { font-size: 0.8rem; font-weight: bold; }
+.day-icons {
+  font-size: 0.95rem;
+  line-height: 1.3;
+  word-break: break-all;
+  margin-top: 2px;
+}
+.more { color: var(--muted); font-weight: bold; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 12px 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ---- モーダル ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--card);
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+@media (min-width: 600px) {
+  .modal-overlay { align-items: center; }
+  .modal { border-radius: 16px; }
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.modal-header h3 { font-size: 1.1rem; }
+
+.day-records { margin-bottom: 14px; }
+.no-records { color: var(--muted); padding: 10px 0; font-size: 0.9rem; }
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+.record-time { color: var(--muted); font-size: 0.8rem; min-width: 3.2em; }
+.record-icon { font-size: 1.2rem; }
+.record-body { flex: 1; }
+.del-btn { border: none; background: none; }
+
+/* ---- 記録追加 ---- */
+.add-record h4 { font-size: 0.95rem; margin-bottom: 8px; color: var(--muted); }
+.type-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.type-btn {
+  padding: 8px 2px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  line-height: 1.6;
+}
+.type-btn:hover { background: #E0F2F1; border-color: var(--primary); }
+
+#record-form { margin-top: 10px; }
+.form-row { margin-bottom: 10px; }
+.form-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+.form-row input, .form-row select { flex: 1; min-width: 0; }
+.unit { color: var(--muted); font-size: 0.85rem; }
+.form-actions { display: flex; gap: 8px; margin-top: 12px; }
+.primary-btn {
+  flex: 1;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.primary-btn:hover { background: var(--primary-dark); }
+.secondary-btn {
+  padding: 12px 16px;
+  font-size: 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+/* ---- グラフ ---- */
+.graph-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+.graph-controls select { flex: 1; }
+.chart-scroll { overflow-x: auto; }
+.chart {
+  width: 100%;
+  min-width: 480px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.grid-line { stroke: var(--border); stroke-width: 1; }
+.axis-label { font-size: 11px; fill: var(--muted); }
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  padding: 6px 2px;
+  font-size: 0.85rem;
+}
+.swatch {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}

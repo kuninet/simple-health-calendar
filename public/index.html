@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>体調記録カレンダー</title>
+  <meta name="description" content="排便・血圧・体重などの体調を記録するシンプルなカレンダー">
+  <meta name="theme-color" content="#00897B">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="体調カレンダー">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>🩺 体調記録カレンダー</h1>
+    <div class="user-area">
+      <select id="user-select" aria-label="ユーザー選択"></select>
+      <button id="add-user-btn" class="icon-btn" title="ユーザー追加">＋</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button id="tab-calendar" class="tab active">📅 カレンダー</button>
+    <button id="tab-graph" class="tab">📈 グラフ</button>
+  </nav>
+
+  <main>
+    <!-- カレンダービュー -->
+    <section id="calendar-view">
+      <div class="month-nav">
+        <button id="prev-month" class="nav-btn">‹</button>
+        <h2 id="month-title"></h2>
+        <button id="next-month" class="nav-btn">›</button>
+        <button id="today-btn" class="today-btn">今日</button>
+      </div>
+      <div class="weekdays">
+        <div class="sun">日</div><div>月</div><div>火</div><div>水</div>
+        <div>木</div><div>金</div><div class="sat">土</div>
+      </div>
+      <div id="calendar-grid" class="calendar-grid"></div>
+      <div id="legend" class="legend"></div>
+    </section>
+
+    <!-- グラフビュー -->
+    <section id="graph-view" hidden>
+      <div class="graph-controls">
+        <select id="graph-type"></select>
+        <select id="graph-days">
+          <option value="30">30日</option>
+          <option value="90" selected>90日</option>
+          <option value="180">180日</option>
+          <option value="365">1年</option>
+        </select>
+      </div>
+      <div id="graph-container"></div>
+    </section>
+  </main>
+
+  <!-- 日別詳細モーダル -->
+  <div id="day-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-date"></h3>
+        <button id="modal-close" class="icon-btn">✕</button>
+      </div>
+      <div id="day-records" class="day-records"></div>
+      <div class="add-record">
+        <h4>記録を追加</h4>
+        <div id="type-buttons" class="type-buttons"></div>
+        <form id="record-form" hidden>
+          <div id="form-fields"></div>
+          <div class="form-row">
+            <label>時刻 <input type="time" id="record-time"></label>
+          </div>
+          <div class="form-row">
+            <label>メモ <input type="text" id="record-notes" placeholder="（任意）"></label>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary-btn">記録する</button>
+            <button type="button" id="form-cancel" class="secondary-btn">キャンセル</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
