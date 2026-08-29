@@ -51,6 +51,9 @@ npm start
 PORT=8080 npm start
 ```
 
+Windowsでの手順や、PC起動時に自動で立ち上げるサービス化
+（Windows / macOS / Linux）については [INSTALLATION.md](INSTALLATION.md) を参照してください。
+
 ## 🔌 API
 
 | メソッド | パス | 説明 |
