@@ -157,8 +157,20 @@ function bindEvents() {
   })
   $('record-form').addEventListener('submit', submitRecord)
   $('form-cancel').addEventListener('click', hideForm)
-  $('graph-type').addEventListener('change', renderGraph)
-  $('graph-days').addEventListener('change', renderGraph)
+  $('graph-type').addEventListener('change', (e) => {
+    localStorage.setItem('health-cal-graph-type', e.target.value)
+    renderGraph()
+  })
+  $('graph-days').addEventListener('change', (e) => {
+    localStorage.setItem('health-cal-graph-days', e.target.value)
+    renderGraph()
+  })
+  // 画面幅が変わったらグラフを描き直す（横はみ出し防止）
+  let resizeTimer = null
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => { if (!$('graph-view').hidden) renderGraph() }, 150)
+  })
 }
 
 async function addUser() {
@@ -373,6 +385,14 @@ function renderGraphTypeOptions() {
   $('graph-type').innerHTML = Object.entries(GRAPH_TYPES)
     .map(([key, g]) => `<option value="${key}">${g.label}</option>`)
     .join('')
+
+  // 前回選んだ種別・期間をデフォルトとして復元
+  const savedType = localStorage.getItem('health-cal-graph-type')
+  if (savedType && GRAPH_TYPES[savedType]) $('graph-type').value = savedType
+  const savedDays = localStorage.getItem('health-cal-graph-days')
+  if (savedDays && [...$('graph-days').options].some((o) => o.value === savedDays)) {
+    $('graph-days').value = savedDays
+  }
 }
 
 async function renderGraph() {
@@ -398,7 +418,11 @@ async function renderGraph() {
 }
 
 function buildLineChart(seriesList, all) {
-  const W = 720, H = 340, PAD = { l: 48, r: 16, t: 16, b: 36 }
+  // コンテナの実幅に合わせて描く（SVGを拡大縮小せず、文字サイズを保つ）
+  const avail = $('graph-container').clientWidth || 720
+  const W = Math.max(280, Math.min(720, Math.round(avail)))
+  const H = W < 420 ? 240 : 340
+  const PAD = W < 420 ? { l: 34, r: 8, t: 12, b: 30 } : { l: 48, r: 16, t: 16, b: 36 }
   const xs = all.map((p) => p.x.getTime())
   const ys = all.map((p) => p.y)
   const xMin = Math.min(...xs), xMax = Math.max(...xs)
@@ -416,7 +440,7 @@ function buildLineChart(seriesList, all) {
     const v = yMin + ((yMax - yMin) * i) / 4
     const y = sy(v)
     grid += `<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" class="grid-line"/>
-      <text x="${PAD.l - 6}" y="${y + 4}" class="axis-label" text-anchor="end">${v.toFixed(1)}</text>`
+      <text x="${PAD.l - 6}" y="${y + 4}" class="axis-label" text-anchor="end">${W < 420 ? Math.round(v) : v.toFixed(1)}</text>`
   }
   // X軸目盛（最初・中間・最後の日付）
   for (const t of [xMin, (xMin + xMax) / 2, xMax]) {
@@ -435,7 +459,7 @@ function buildLineChart(seriesList, all) {
   })
 
   return `<div class="chart-legend">${legend}</div>
-    <div class="chart-scroll"><svg viewBox="0 0 ${W} ${H}" class="chart">${grid}${lines}</svg></div>`
+    <svg viewBox="0 0 ${W} ${H}" class="chart">${grid}${lines}</svg>`
 }
 
 // ---- ユーティリティ ----

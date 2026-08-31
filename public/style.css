@@ -34,7 +34,8 @@ body {
   gap: 8px;
 }
 .app-header h1 { font-size: 1.25rem; color: var(--primary-dark); }
-.user-area { display: flex; gap: 6px; align-items: center; }
+.user-area { display: flex; gap: 6px; align-items: center; min-width: 0; }
+#user-select { min-width: 0; max-width: 55vw; }
 
 select, input[type="text"], input[type="number"], input[type="time"] {
   font-size: 1rem;
@@ -79,10 +80,11 @@ select, input[type="text"], input[type="number"], input[type="time"] {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
 }
-.month-nav h2 { font-size: 1.15rem; min-width: 9em; text-align: center; }
+.month-nav h2 { font-size: 1.15rem; min-width: 7.5em; text-align: center; }
 .nav-btn {
   font-size: 1.4rem;
   width: 40px; height: 40px;
@@ -106,6 +108,7 @@ select, input[type="text"], input[type="number"], input[type="time"] {
 .weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
   text-align: center;
   font-size: 0.8rem;
   color: var(--muted);
@@ -195,14 +198,14 @@ select, input[type="text"], input[type="number"], input[type="time"] {
 }
 .record-time { color: var(--muted); font-size: 0.8rem; min-width: 3.2em; }
 .record-icon { font-size: 1.2rem; }
-.record-body { flex: 1; }
+.record-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .del-btn { border: none; background: none; }
 
 /* ---- 記録追加 ---- */
 .add-record h4 { font-size: 0.95rem; margin-bottom: 8px; color: var(--muted); }
 .type-buttons {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 .type-btn {
@@ -250,11 +253,12 @@ select, input[type="text"], input[type="number"], input[type="time"] {
 
 /* ---- グラフ ---- */
 .graph-controls { display: flex; gap: 8px; margin-bottom: 10px; }
-.graph-controls select { flex: 1; }
-.chart-scroll { overflow-x: auto; }
+.graph-controls select { flex: 1; min-width: 0; }
 .chart {
   width: 100%;
-  min-width: 480px;
+  max-width: 100%;
+  height: auto;
+  display: block;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -263,7 +267,8 @@ select, input[type="text"], input[type="number"], input[type="time"] {
 .axis-label { font-size: 11px; fill: var(--muted); }
 .chart-legend {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   padding: 6px 2px;
   font-size: 0.85rem;
 }
