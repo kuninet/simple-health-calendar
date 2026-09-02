@@ -30,12 +30,29 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 14px 4px 10px;
-  flex-wrap: wrap;
+  /* 折り返すと名前が長いときにヘッダーが2行になるため、
+     タイトル側を縮めて末尾を省略する */
+  flex-wrap: nowrap;
   gap: 8px;
 }
-.app-header h1 { font-size: 1.25rem; color: var(--primary-dark); }
-.user-area { display: flex; gap: 6px; align-items: center; min-width: 0; }
-#user-select { min-width: 0; max-width: 55vw; }
+.app-header h1 {
+  font-size: 1.25rem;
+  color: var(--primary-dark);
+  /* 幅が足りないときは、ユーザー欄より先にタイトルを縮める */
+  flex: 0 100 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-area { display: flex; gap: 6px; align-items: center; flex: 0 1 auto; min-width: 0; }
+/* 画面の45%まで。広い画面でタイトルを潰さないよう上限も設ける */
+#user-select {
+  min-width: 0;
+  max-width: 45vw;
+  max-width: min(45vw, 260px);
+  text-overflow: ellipsis;
+}
 
 select, input[type="text"], input[type="number"], input[type="time"] {
   font-size: 1rem;
