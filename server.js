@@ -15,6 +15,14 @@ app.use(express.static(path.join(__dirname, 'public')))
 
 // ---- ユーザー ----
 
+// display_name を検証して正規化する。問題があればエラーメッセージを返す
+function validateDisplayName(value) {
+  const name = typeof value === 'string' ? value.trim() : ''
+  if (!name) return { error: 'display_name は必須です' }
+  if (name.length > 50) return { error: 'display_name は50文字以内にしてください' }
+  return { name }
+}
+
 app.get('/api/users', (req, res) => {
   db.all('SELECT * FROM users ORDER BY id', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message })
@@ -23,16 +31,32 @@ app.get('/api/users', (req, res) => {
 })
 
 app.post('/api/users', (req, res) => {
-  const { username, display_name, color_theme } = req.body
-  if (!username || !display_name) {
+  const { username, color_theme } = req.body
+  if (!username) {
     return res.status(400).json({ error: 'username と display_name は必須です' })
   }
+  const { name: display_name, error } = validateDisplayName(req.body.display_name)
+  if (error) return res.status(400).json({ error })
   db.run(
     'INSERT INTO users (username, display_name, color_theme) VALUES (?, ?, ?)',
     [username, display_name, color_theme || 'teal'],
     function (err) {
       if (err) return res.status(400).json({ error: err.message })
       res.json({ id: this.lastID, username, display_name })
+    }
+  )
+})
+
+app.put('/api/users/:id', (req, res) => {
+  const { name: displayName, error } = validateDisplayName(req.body.display_name)
+  if (error) return res.status(400).json({ error })
+  db.run(
+    'UPDATE users SET display_name = ? WHERE id = ?',
+    [displayName, req.params.id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message })
+      if (this.changes === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' })
+      res.json({ updated: true })
     }
   )
 })

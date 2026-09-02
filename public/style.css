@@ -51,6 +51,9 @@ select, input[type="text"], input[type="number"], input[type="time"] {
   background: var(--card);
   border-radius: 8px;
   padding: 6px 10px;
+  height: 36px;
+  min-width: 36px;
+  line-height: 1;
   font-size: 1rem;
   cursor: pointer;
 }
