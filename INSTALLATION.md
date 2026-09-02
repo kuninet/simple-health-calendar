@@ -121,6 +121,42 @@ nssm edit HealthCalendar       # 設定GUIを開く
 nssm remove HealthCalendar confirm  # サービス削除
 ```
 
+#### 更新スクリプト（update.bat）
+
+サービスとして動かしたあと最新版に入れ替えるときは、リポジトリ同梱の
+`update.bat` を**右クリック →「管理者として実行」**してください。
+次の順に処理します。
+
+1. サービスを停止する
+2. `health-app.db` を `backups\health-app-<日時>.db` にコピーする
+3. `git pull` で最新版を取得する
+4. `npm install` で依存関係を更新する
+5. サービスを起動し、`http://localhost:3100/` の応答を確認する
+
+途中で失敗したときは更新を中止してサービスを起動し直します。
+`npm install` に失敗した場合は、コードも更新前に戻してから起動します。
+戻せなかったときは、壊れた状態で動き続けないようサービスを起動しません。
+
+バックアップは `backups` フォルダに最新20件ほど残ります。
+記録を戻したいときは、サービスを止めてからファイルを上書きしてください。
+
+```powershell
+nssm stop HealthCalendar
+copy backups\health-app-<日時>.db health-app.db
+nssm start HealthCalendar
+```
+
+サービス名やポートを変えている場合は、`update.bat` は編集せず、
+同じフォルダに `update.local.bat` を作って次のように書いてください
+（`update.bat` を書き換えると `git pull` ができなくなります）。
+
+```bat
+set "SERVICE=別のサービス名"
+set "PORT=8080"
+```
+
+ZIP で導入した場合は `git pull` ができないので、この方法は使えません。
+
 ### macOS: launchd を使う
 
 macOS には launchd という標準の仕組みがあります。
