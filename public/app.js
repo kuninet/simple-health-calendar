@@ -141,6 +141,7 @@ function bindEvents() {
     renderGraph()
   })
   $('add-user-btn').addEventListener('click', addUser)
+  $('edit-user-btn').addEventListener('click', renameUser)
   $('prev-month').addEventListener('click', () => shiftMonth(-1))
   $('next-month').addEventListener('click', () => shiftMonth(1))
   $('today-btn').addEventListener('click', async () => {
@@ -186,6 +187,29 @@ async function addUser() {
     await loadMonth()
   } catch (err) {
     alert(`ユーザー追加に失敗しました: ${err.message}`)
+  }
+}
+
+async function renameUser() {
+  const user = state.users.find((u) => u.id === state.userId)
+  if (!user) return
+  const name = prompt('新しい名前を入力してください', user.display_name)
+  if (name == null) return
+  const trimmed = name.trim()
+  if (!trimmed) {
+    alert('名前を入力してください')
+    return
+  }
+  if (trimmed === user.display_name) return
+  try {
+    await api(`/api/users/${user.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: trimmed })
+    })
+    await loadUsers()
+  } catch (err) {
+    alert(`ユーザー名の変更に失敗しました: ${err.message}`)
   }
 }
 
