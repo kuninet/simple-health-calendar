@@ -93,7 +93,9 @@ const state = {
   month: new Date().getMonth() + 1, // 1-12
   monthRecords: [],   // 表示中の月の全記録
   selectedDate: null, // モーダルで開いている日 'YYYY-MM-DD'
-  formType: null      // 入力中の記録種別
+  formType: null,     // 入力中の記録種別（日別モーダル側）
+  entryType: null,    // 入力中の記録種別（入力タブ側）
+  entryDate: null     // 入力タブで選択中の日 'YYYY-MM-DD'
 }
 
 const $ = (id) => document.getElementById(id)
@@ -113,6 +115,7 @@ async function init() {
   bindEvents()
   renderLegend()
   renderGraphTypeOptions()
+  await initEntryView()
   await loadMonth()
 }
 
@@ -139,6 +142,7 @@ function bindEvents() {
     localStorage.setItem('health-cal-user', state.userId)
     await loadMonth()
     renderGraph()
+    if (state.entryDate) await renderDayRecords($('entry-day-records'), state.entryDate)
   })
   $('add-user-btn').addEventListener('click', addUser)
   $('edit-user-btn').addEventListener('click', renameUser)
@@ -150,6 +154,7 @@ function bindEvents() {
     state.month = now.getMonth() + 1
     await loadMonth()
   })
+  $('tab-entry').addEventListener('click', () => switchTab('entry'))
   $('tab-calendar').addEventListener('click', () => switchTab('calendar'))
   $('tab-graph').addEventListener('click', () => switchTab('graph'))
   $('modal-close').addEventListener('click', closeModal)
@@ -158,6 +163,20 @@ function bindEvents() {
   })
   $('record-form').addEventListener('submit', submitRecord)
   $('form-cancel').addEventListener('click', hideForm)
+  $('entry-form').addEventListener('submit', submitEntryRecord)
+  $('entry-form-cancel').addEventListener('click', hideEntryForm)
+  $('entry-date').addEventListener('change', async (e) => {
+    state.entryDate = e.target.value || dateStr(new Date())
+    e.target.value = state.entryDate
+    updateEntryDayTitle()
+    await renderDayRecords($('entry-day-records'), state.entryDate)
+  })
+  $('entry-today-btn').addEventListener('click', async () => {
+    state.entryDate = dateStr(new Date())
+    $('entry-date').value = state.entryDate
+    updateEntryDayTitle()
+    await renderDayRecords($('entry-day-records'), state.entryDate)
+  })
   $('graph-type').addEventListener('change', (e) => {
     localStorage.setItem('health-cal-graph-type', e.target.value)
     renderGraph()
@@ -214,11 +233,18 @@ async function renameUser() {
 }
 
 function switchTab(tab) {
+  $('tab-entry').classList.toggle('active', tab === 'entry')
   $('tab-calendar').classList.toggle('active', tab === 'calendar')
   $('tab-graph').classList.toggle('active', tab === 'graph')
+  $('entry-view').hidden = tab !== 'entry'
   $('calendar-view').hidden = tab !== 'calendar'
   $('graph-view').hidden = tab !== 'graph'
   if (tab === 'graph') renderGraph()
+  // モーダルから記録を足した直後に戻ってくることがあるので、入力タブは毎回描き直す
+  if (tab === 'entry' && state.entryDate) {
+    updateEntryDayTitle()
+    renderDayRecords($('entry-day-records'), state.entryDate)
+  }
 }
 
 // ---- カレンダー ----
@@ -285,67 +311,10 @@ function renderLegend() {
     .join('')
 }
 
-// ---- 日別モーダル ----
-async function openDay(ds) {
-  state.selectedDate = ds
-  const [y, m, d] = ds.split('-').map(Number)
-  const dow = '日月火水木金土'[new Date(y, m - 1, d).getDay()]
-  $('modal-date').textContent = `${m}月${d}日（${dow}）`
-  hideForm()
-  $('day-modal').hidden = false
-  await renderDayRecords()
-  renderTypeButtons()
-}
-
-function closeModal() {
-  $('day-modal').hidden = true
-  state.selectedDate = null
-}
-
-async function renderDayRecords() {
-  const recs = await api(`/api/records/day?user_id=${state.userId}&date=${state.selectedDate}`)
-  if (recs.length === 0) {
-    $('day-records').innerHTML = '<p class="no-records">この日の記録はまだありません</p>'
-    return
-  }
-  $('day-records').innerHTML = recs.map((r) => {
-    const t = RECORD_TYPES[r.type] || { icon: '❓', name: r.type, summary: () => '' }
-    const parts = [
-      escapeHtml(t.summary(r.data)),
-      r.notes ? escapeHtml(r.notes) : ''
-    ].filter(Boolean)
-    return `<div class="record-row">
-      <span class="record-time">${escapeHtml(r.record_time || '--:--')}</span>
-      <span class="record-icon">${t.icon}</span>
-      <span class="record-body"><b>${escapeHtml(t.name)}</b> ${parts.join(' — ')}</span>
-      <button class="icon-btn del-btn" data-id="${r.id}" title="削除">🗑</button>
-    </div>`
-  }).join('')
-  $('day-records').querySelectorAll('.del-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('この記録を削除しますか？')) return
-      await api(`/api/records/${btn.dataset.id}`, { method: 'DELETE' })
-      await renderDayRecords()
-      await loadMonth()
-    })
-  })
-}
-
-function renderTypeButtons() {
-  $('type-buttons').innerHTML = Object.entries(RECORD_TYPES)
-    .map(([key, t]) => `<button class="type-btn" data-type="${key}">${t.icon}<br>${t.name}</button>`)
-    .join('')
-  $('type-buttons').querySelectorAll('.type-btn').forEach((btn) => {
-    btn.addEventListener('click', () => showForm(btn.dataset.type))
-  })
-}
-
-function showForm(type) {
-  state.formType = type
+// ---- フォーム共通処理（日別モーダル・入力タブ両方から使う） ----
+function renderFormFields(containerEl, type) {
   const t = RECORD_TYPES[type]
-  $('type-buttons').hidden = true
-  $('record-form').hidden = false
-  $('form-fields').innerHTML = t.fields.map((f) => {
+  containerEl.innerHTML = t.fields.map((f) => {
     if (f.type === 'select') {
       const opts = f.options
         .map(([v, label]) => `<option value="${v}">${label}</option>`)
@@ -362,6 +331,85 @@ function showForm(type) {
       <input type="${f.type}" data-key="${f.key}" ${attrs}>
       ${f.unit ? `<span class="unit">${f.unit}</span>` : ''}</label></div>`
   }).join('')
+}
+
+function collectFormData(containerEl) {
+  const data = {}
+  for (const el of containerEl.querySelectorAll('[data-key]')) {
+    if (el.value === '') continue
+    data[el.dataset.key] = el.type === 'number' ? Number(el.value) : el.value
+  }
+  return data
+}
+
+async function createRecord({ user_id, type, record_date, record_time, data, notes }) {
+  return api('/api/records', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id, type, record_date, record_time, data, notes })
+  })
+}
+
+async function renderDayRecords(containerEl, date) {
+  const recs = await api(`/api/records/day?user_id=${state.userId}&date=${date}`)
+  if (recs.length === 0) {
+    containerEl.innerHTML = '<p class="no-records">この日の記録はまだありません</p>'
+    return
+  }
+  containerEl.innerHTML = recs.map((r) => {
+    const t = RECORD_TYPES[r.type] || { icon: '❓', name: r.type, summary: () => '' }
+    const parts = [
+      escapeHtml(t.summary(r.data)),
+      r.notes ? escapeHtml(r.notes) : ''
+    ].filter(Boolean)
+    return `<div class="record-row">
+      <span class="record-time">${escapeHtml(r.record_time || '--:--')}</span>
+      <span class="record-icon">${t.icon}</span>
+      <span class="record-body"><b>${escapeHtml(t.name)}</b> ${parts.join(' — ')}</span>
+      <button class="icon-btn del-btn" data-id="${r.id}" title="削除">🗑</button>
+    </div>`
+  }).join('')
+  containerEl.querySelectorAll('.del-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('この記録を削除しますか？')) return
+      await api(`/api/records/${btn.dataset.id}`, { method: 'DELETE' })
+      await renderDayRecords(containerEl, date)
+      await loadMonth()
+    })
+  })
+}
+
+// ---- 日別モーダル ----
+async function openDay(ds) {
+  state.selectedDate = ds
+  const [y, m, d] = ds.split('-').map(Number)
+  const dow = '日月火水木金土'[new Date(y, m - 1, d).getDay()]
+  $('modal-date').textContent = `${m}月${d}日（${dow}）`
+  hideForm()
+  $('day-modal').hidden = false
+  await renderDayRecords($('day-records'), state.selectedDate)
+  renderTypeButtons()
+}
+
+function closeModal() {
+  $('day-modal').hidden = true
+  state.selectedDate = null
+}
+
+function renderTypeButtons() {
+  $('type-buttons').innerHTML = Object.entries(RECORD_TYPES)
+    .map(([key, t]) => `<button class="type-btn" data-type="${key}">${t.icon}<br>${t.name}</button>`)
+    .join('')
+  $('type-buttons').querySelectorAll('.type-btn').forEach((btn) => {
+    btn.addEventListener('click', () => showForm(btn.dataset.type))
+  })
+}
+
+function showForm(type) {
+  state.formType = type
+  $('type-buttons').hidden = true
+  $('record-form').hidden = false
+  renderFormFields($('form-fields'), type)
   // 時刻は現在時刻を初期値に
   const now = new Date()
   $('record-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`
@@ -378,30 +426,115 @@ function hideForm() {
 
 async function submitRecord(e) {
   e.preventDefault()
-  const data = {}
-  for (const el of $('form-fields').querySelectorAll('[data-key]')) {
-    if (el.value === '') continue
-    data[el.dataset.key] = el.type === 'number' ? Number(el.value) : el.value
-  }
+  const data = collectFormData($('form-fields'))
   try {
-    await api('/api/records', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: state.userId,
-        type: state.formType,
-        record_date: state.selectedDate,
-        record_time: $('record-time').value || null,
-        data,
-        notes: $('record-notes').value || null
-      })
+    await createRecord({
+      user_id: state.userId,
+      type: state.formType,
+      record_date: state.selectedDate,
+      record_time: $('record-time').value || null,
+      data,
+      notes: $('record-notes').value || null
     })
     hideForm()
-    await renderDayRecords()
+    await renderDayRecords($('day-records'), state.selectedDate)
     await loadMonth()
   } catch (err) {
     alert(`記録に失敗しました: ${err.message}`)
   }
+}
+
+// ---- 入力タブ ----
+async function initEntryView() {
+  state.entryDate = dateStr(new Date())
+  $('entry-date').value = state.entryDate
+  renderEntryTypeButtons()
+  updateEntryDayTitle()
+  await renderDayRecords($('entry-day-records'), state.entryDate)
+}
+
+function updateEntryDayTitle() {
+  const todayStr = dateStr(new Date())
+  if (state.entryDate === todayStr) {
+    $('entry-day-title').textContent = '今日の記録'
+    return
+  }
+  const [y, m, d] = state.entryDate.split('-').map(Number)
+  const dow = '日月火水木金土'[new Date(y, m - 1, d).getDay()]
+  $('entry-day-title').textContent = `${m}月${d}日（${dow}）の記録`
+}
+
+function renderEntryTypeButtons() {
+  $('entry-type-buttons').innerHTML = Object.entries(RECORD_TYPES)
+    .map(([key, t]) => `<button class="entry-type-btn" data-type="${key}">
+      <span class="entry-type-icon">${t.icon}</span>
+      <span class="entry-type-name">${t.name}</span>
+    </button>`)
+    .join('')
+  $('entry-type-buttons').querySelectorAll('.entry-type-btn').forEach((btn) => {
+    btn.addEventListener('click', () => showEntryForm(btn.dataset.type))
+  })
+}
+
+function showEntryForm(type) {
+  state.entryType = type
+  const t = RECORD_TYPES[type]
+  $('entry-form-title').textContent = `${t.icon} ${t.name}`
+  renderFormFields($('entry-form-fields'), type)
+  // 時刻は現在時刻を初期値に
+  const now = new Date()
+  $('entry-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  $('entry-notes').value = ''
+  $('entry-type-buttons').hidden = true
+  $('entry-form').hidden = false
+  // フィールドの無い種別（体調メモ）はメモ欄にフォーカスする
+  const firstInput = $('entry-form-fields').querySelector('input, select')
+  ;(firstInput || $('entry-notes')).focus()
+}
+
+function hideEntryForm() {
+  state.entryType = null
+  $('entry-form').hidden = true
+  $('entry-type-buttons').hidden = false
+}
+
+async function submitEntryRecord(e) {
+  e.preventDefault()
+  const t = RECORD_TYPES[state.entryType]
+  const data = collectFormData($('entry-form-fields'))
+  try {
+    await createRecord({
+      user_id: state.userId,
+      type: state.entryType,
+      record_date: state.entryDate,
+      record_time: $('entry-time').value || null,
+      data,
+      notes: $('entry-notes').value || null
+    })
+    hideEntryForm()
+    showToast(`${t.icon} ${entryToastPrefix()}${t.name}を記録しました`)
+    await renderDayRecords($('entry-day-records'), state.entryDate)
+    await loadMonth()
+  } catch (err) {
+    alert(`記録に失敗しました: ${err.message}`)
+  }
+}
+
+// 今日以外の日に記録したときだけ「M/D に」を付ける
+function entryToastPrefix() {
+  if (state.entryDate === dateStr(new Date())) return ''
+  const [, m, d] = state.entryDate.split('-').map(Number)
+  return `${m}/${d} に `
+}
+
+function showToast(msg) {
+  const existing = document.querySelector('.toast')
+  if (existing) existing.remove()
+  const toast = document.createElement('div')
+  toast.className = 'toast'
+  toast.textContent = msg
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 2500)
 }
 
 // ---- グラフ ----
