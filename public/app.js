@@ -94,8 +94,7 @@ const state = {
   monthRecords: [],   // 表示中の月の全記録
   selectedDate: null, // モーダルで開いている日 'YYYY-MM-DD'
   formType: null,     // 入力中の記録種別（日別モーダル側）
-  entryType: null,    // 入力中の記録種別（入力タブ側）
-  entryDate: null     // 入力タブで選択中の日 'YYYY-MM-DD'
+  entryType: null     // 入力中の記録種別（入力タブ側）
 }
 
 const $ = (id) => document.getElementById(id)
@@ -142,7 +141,7 @@ function bindEvents() {
     localStorage.setItem('health-cal-user', state.userId)
     await loadMonth()
     renderGraph()
-    if (state.entryDate) await renderDayRecords($('entry-day-records'), state.entryDate)
+    await renderEntryDayRecords()
   })
   $('add-user-btn').addEventListener('click', addUser)
   $('edit-user-btn').addEventListener('click', renameUser)
@@ -165,18 +164,6 @@ function bindEvents() {
   $('form-cancel').addEventListener('click', hideForm)
   $('entry-form').addEventListener('submit', submitEntryRecord)
   $('entry-form-cancel').addEventListener('click', hideEntryForm)
-  $('entry-date').addEventListener('change', async (e) => {
-    state.entryDate = e.target.value || dateStr(new Date())
-    e.target.value = state.entryDate
-    updateEntryDayTitle()
-    await renderDayRecords($('entry-day-records'), state.entryDate)
-  })
-  $('entry-today-btn').addEventListener('click', async () => {
-    state.entryDate = dateStr(new Date())
-    $('entry-date').value = state.entryDate
-    updateEntryDayTitle()
-    await renderDayRecords($('entry-day-records'), state.entryDate)
-  })
   $('graph-type').addEventListener('change', (e) => {
     localStorage.setItem('health-cal-graph-type', e.target.value)
     renderGraph()
@@ -184,6 +171,12 @@ function bindEvents() {
   $('graph-days').addEventListener('change', (e) => {
     localStorage.setItem('health-cal-graph-days', e.target.value)
     renderGraph()
+  })
+  // スマホでアプリに復帰したときは「今日の記録」を取り直す（日付をまたいだ場合の対策）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !$('entry-view').hidden) {
+      renderEntryDayRecords().catch(() => {})
+    }
   })
   // 画面幅が変わったらグラフを描き直す（横はみ出し防止）
   let resizeTimer = null
@@ -240,11 +233,8 @@ function switchTab(tab) {
   $('calendar-view').hidden = tab !== 'calendar'
   $('graph-view').hidden = tab !== 'graph'
   if (tab === 'graph') renderGraph()
-  // モーダルから記録を足した直後に戻ってくることがあるので、入力タブは毎回描き直す
-  if (tab === 'entry' && state.entryDate) {
-    updateEntryDayTitle()
-    renderDayRecords($('entry-day-records'), state.entryDate)
-  }
+  // モーダルから記録を足した直後や日付をまたいだ場合があるので、入力タブは毎回描き直す
+  if (tab === 'entry') renderEntryDayRecords()
 }
 
 // ---- カレンダー ----
@@ -350,10 +340,12 @@ async function createRecord({ user_id, type, record_date, record_time, data, not
   })
 }
 
+// date を省略するとサーバーのローカル日付（＝今日）の記録を表示する
 async function renderDayRecords(containerEl, date) {
-  const recs = await api(`/api/records/day?user_id=${state.userId}&date=${date}`)
+  const query = date ? `&date=${date}` : ''
+  const recs = await api(`/api/records/day?user_id=${state.userId}${query}`)
   if (recs.length === 0) {
-    containerEl.innerHTML = '<p class="no-records">この日の記録はまだありません</p>'
+    containerEl.innerHTML = '<p class="no-records">まだ記録がありません</p>'
     return
   }
   containerEl.innerHTML = recs.map((r) => {
@@ -446,22 +438,13 @@ async function submitRecord(e) {
 
 // ---- 入力タブ ----
 async function initEntryView() {
-  state.entryDate = dateStr(new Date())
-  $('entry-date').value = state.entryDate
   renderEntryTypeButtons()
-  updateEntryDayTitle()
-  await renderDayRecords($('entry-day-records'), state.entryDate)
+  await renderEntryDayRecords()
 }
 
-function updateEntryDayTitle() {
-  const todayStr = dateStr(new Date())
-  if (state.entryDate === todayStr) {
-    $('entry-day-title').textContent = '今日の記録'
-    return
-  }
-  const [y, m, d] = state.entryDate.split('-').map(Number)
-  const dow = '日月火水木金土'[new Date(y, m - 1, d).getDay()]
-  $('entry-day-title').textContent = `${m}月${d}日（${dow}）の記録`
+// 「今日」はサーバー側で判定するので日付は送らない
+function renderEntryDayRecords() {
+  return renderDayRecords($('entry-day-records'))
 }
 
 function renderEntryTypeButtons() {
@@ -481,9 +464,6 @@ function showEntryForm(type) {
   const t = RECORD_TYPES[type]
   $('entry-form-title').textContent = `${t.icon} ${t.name}`
   renderFormFields($('entry-form-fields'), type)
-  // 時刻は現在時刻を初期値に
-  const now = new Date()
-  $('entry-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`
   $('entry-notes').value = ''
   $('entry-type-buttons').hidden = true
   $('entry-form').hidden = false
@@ -506,25 +486,16 @@ async function submitEntryRecord(e) {
     await createRecord({
       user_id: state.userId,
       type: state.entryType,
-      record_date: state.entryDate,
-      record_time: $('entry-time').value || null,
       data,
       notes: $('entry-notes').value || null
     })
     hideEntryForm()
-    showToast(`${t.icon} ${entryToastPrefix()}${t.name}を記録しました`)
-    await renderDayRecords($('entry-day-records'), state.entryDate)
+    showToast(`${t.icon} ${t.name}を記録しました`)
+    await renderEntryDayRecords()
     await loadMonth()
   } catch (err) {
     alert(`記録に失敗しました: ${err.message}`)
   }
-}
-
-// 今日以外の日に記録したときだけ「M/D に」を付ける
-function entryToastPrefix() {
-  if (state.entryDate === dateStr(new Date())) return ''
-  const [, m, d] = state.entryDate.split('-').map(Number)
-  return `${m}/${d} に `
 }
 
 function showToast(msg) {

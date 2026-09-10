@@ -10,6 +10,18 @@ const db = openDatabase()
 
 const VALID_TYPES = ['bowel', 'blood_pressure', 'weight', 'temperature', 'sleep', 'medicine', 'memo']
 
+// サーバーのローカル時刻を 'YYYY-MM-DD' / 'HH:MM' に整形する
+// （SQL 側で使っている date('now','localtime') と同じ基準に揃えるため）
+const pad2 = (n) => String(n).padStart(2, '0')
+
+function serverDate(now = new Date()) {
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+function serverTime(now = new Date()) {
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`
+}
+
 app.use(express.json())
 app.use(express.static(path.join(__dirname, 'public')))
 
@@ -83,14 +95,20 @@ app.get('/api/records', (req, res) => {
 })
 
 // 1日の記録: /api/records/day?user_id=1&date=2026-08-29
+// date 省略時はサーバーのローカル日付（＝今日）を使う
 app.get('/api/records/day', (req, res) => {
   const { user_id, date } = req.query
-  if (!user_id || !date) {
-    return res.status(400).json({ error: 'user_id, date は必須です' })
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id は必須です' })
   }
+  // date を渡した場合は形式を検証する（省略時のみサーバーのローカル日付にフォールバック）
+  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date は YYYY-MM-DD 形式で指定してください' })
+  }
+  const targetDate = date !== undefined ? date : serverDate()
   db.all(
     'SELECT * FROM records WHERE user_id = ? AND record_date = ? ORDER BY record_time, id',
-    [user_id, date],
+    [user_id, targetDate],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message })
       res.json(rows.map(parseRecord))
@@ -100,22 +118,29 @@ app.get('/api/records/day', (req, res) => {
 
 app.post('/api/records', (req, res) => {
   const { user_id, type, record_date, record_time, data, notes } = req.body
-  if (!user_id || !type || !record_date) {
-    return res.status(400).json({ error: 'user_id, type, record_date は必須です' })
+  if (!user_id || !type) {
+    return res.status(400).json({ error: 'user_id, type は必須です' })
   }
   if (!VALID_TYPES.includes(type)) {
     return res.status(400).json({ error: `不明な記録種別です: ${type}` })
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(record_date)) {
+  // キー自体を送らなかったときだけサーバーの現在日時を使う（入力タブからの記録）。
+  // 明示的に渡された場合は従来どおりの検証・保存にする
+  const hasDate = 'record_date' in req.body
+  const hasTime = 'record_time' in req.body
+  if (hasDate && !/^\d{4}-\d{2}-\d{2}$/.test(record_date || '')) {
     return res.status(400).json({ error: 'record_date は YYYY-MM-DD 形式で指定してください' })
   }
-  if (record_time != null && record_time !== '' && !/^\d{2}:\d{2}$/.test(record_time)) {
+  if (hasTime && record_time != null && record_time !== '' && !/^\d{2}:\d{2}$/.test(record_time)) {
     return res.status(400).json({ error: 'record_time は HH:MM 形式で指定してください' })
   }
+  const now = new Date()
+  const date = hasDate ? record_date : serverDate(now)
+  const time = hasTime ? (record_time || null) : serverTime(now)
   db.run(
     `INSERT INTO records (user_id, type, record_date, record_time, data, notes)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [user_id, type, record_date, record_time || null, JSON.stringify(data || {}), notes || null],
+    [user_id, type, date, time, JSON.stringify(data || {}), notes || null],
     function (err) {
       if (err) return res.status(500).json({ error: err.message })
       db.get('SELECT * FROM records WHERE id = ?', [this.lastID], (err2, row) => {
