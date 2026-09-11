@@ -61,6 +61,7 @@ Windowsでの手順や、PC起動時に自動で立ち上げるサービス化
 | GET | `/api/users` | ユーザー一覧 |
 | POST | `/api/users` | ユーザー追加 |
 | PUT | `/api/users/:id` | ユーザー名を変更（body: `{ "display_name": "..." }`、50文字以内） |
+| GET | `/api/today` | サーバーのローカル日時 `{ date, time }` |
 | GET | `/api/records?user_id&year&month` | 月の記録一覧 |
 | GET | `/api/records/day?user_id&date` | 1日の記録（`date` は任意。省略時はサーバーのローカル日付） |
 | POST | `/api/records` | 記録追加（`record_date` / `record_time` は任意。省略時はサーバーのローカル日時） |

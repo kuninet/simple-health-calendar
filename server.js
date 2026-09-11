@@ -73,6 +73,13 @@ app.put('/api/users/:id', (req, res) => {
   )
 })
 
+// サーバーのローカル日時: /api/today
+// 端末の時計に依存せず「今日」を判定するために使う
+app.get('/api/today', (req, res) => {
+  const now = new Date()
+  res.json({ date: serverDate(now), time: serverTime(now) })
+})
+
 // ---- 記録 ----
 
 // 月の記録一覧: /api/records?user_id=1&year=2026&month=8

@@ -94,7 +94,8 @@ const state = {
   monthRecords: [],   // 表示中の月の全記録
   selectedDate: null, // モーダルで開いている日 'YYYY-MM-DD'
   formType: null,     // 入力中の記録種別（日別モーダル側）
-  entryType: null     // 入力中の記録種別（入力タブ側）
+  entryType: null,    // 入力中の記録種別（入力タブ側）
+  serverNow: null     // サーバーのローカル日時 { date, time }（日別モーダルを開くたびに更新）
 }
 
 const $ = (id) => document.getElementById(id)
@@ -374,6 +375,9 @@ async function renderDayRecords(containerEl, date) {
 // ---- 日別モーダル ----
 async function openDay(ds) {
   state.selectedDate = ds
+  // 時刻欄の初期値を決めるため、端末ではなくサーバーの現在日時を見る
+  // （サーバーに繋がらないときだけ端末の時計で代用する）
+  state.serverNow = await api('/api/today').catch(() => localNow())
   const [y, m, d] = ds.split('-').map(Number)
   const dow = '日月火水木金土'[new Date(y, m - 1, d).getDay()]
   $('modal-date').textContent = `${m}月${d}日（${dow}）`
@@ -402,9 +406,9 @@ function showForm(type) {
   $('type-buttons').hidden = true
   $('record-form').hidden = false
   renderFormFields($('form-fields'), type)
-  // 時刻は現在時刻を初期値に
-  const now = new Date()
-  $('record-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  // 今日を開いているときだけ現在時刻を初期値にする（過去日は空欄のまま手で入れてもらう）
+  const now = state.serverNow || localNow()
+  $('record-time').value = now.date === state.selectedDate ? now.time : ''
   $('record-notes').value = ''
   const firstInput = $('form-fields').querySelector('input, select')
   if (firstInput) firstInput.focus()
@@ -593,6 +597,11 @@ function buildLineChart(seriesList, all) {
 // ---- ユーティリティ ----
 function pad(n) { return String(n).padStart(2, '0') }
 function dateStr(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+// 端末の現在日時を /api/today と同じ形で返す（サーバーに繋がらないときの代用）
+function localNow() {
+  const d = new Date()
+  return { date: dateStr(d), time: `${pad(d.getHours())}:${pad(d.getMinutes())}` }
+}
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
