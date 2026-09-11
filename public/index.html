@@ -33,12 +33,6 @@
   <main>
     <!-- 入力ビュー -->
     <section id="entry-view">
-      <div class="entry-date-row">
-        <label for="entry-date">記録する日</label>
-        <input type="date" id="entry-date">
-        <button type="button" id="entry-today-btn" class="today-btn">今日</button>
-      </div>
-
       <div id="entry-type-buttons" class="entry-type-buttons"></div>
 
       <form id="entry-form" hidden>
@@ -48,9 +42,6 @@
         </div>
         <div id="entry-form-fields"></div>
         <div class="form-row">
-          <label>時刻 <input type="time" id="entry-time"></label>
-        </div>
-        <div class="form-row">
           <label>メモ <input type="text" id="entry-notes" placeholder="（任意）"></label>
         </div>
         <div class="form-actions">
@@ -59,7 +50,7 @@
       </form>
 
       <div class="entry-day-section">
-        <h4 id="entry-day-title">この日の記録</h4>
+        <h4>今日の記録</h4>
         <div id="entry-day-records" class="day-records"></div>
       </div>
     </section>

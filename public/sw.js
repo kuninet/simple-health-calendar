@@ -1,4 +1,4 @@
-const CACHE_NAME = 'health-calendar-v2'
+const CACHE_NAME = 'health-calendar-v3'
 const urlsToCache = [
   '/',
   '/index.html',
