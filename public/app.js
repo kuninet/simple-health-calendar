@@ -171,14 +171,20 @@ const LocalStore = {
             const users = await usersRes.json()
             const records = await recordsRes.json()
             if (Array.isArray(users) && users.length > 0) {
-              this.saveUsers(users)
-              this.saveRecords((Array.isArray(records) ? records : []).map(normalizeRecord))
-              // サーバーから引き継いだ直後は送り返すものが無い
-              this.setDirtyUids([])
-              this.setDirtyUserIds([])
-              this.setDeletedUids([])
-              writeRaw(this.KEYS.INITIALIZED, 'true')
-              return
+              // サーバーから引き継いだ直後は送り返すものが無い。
+              // 引き継ぎを書けたときだけ初期化済みにする（書けていないのに
+              // 初期化済みにすると、次の起動でも引き継ぎをやり直さなくなる）
+              const seeded = writeAll([
+                [this.KEYS.USERS, users],
+                [this.KEYS.RECORDS, (Array.isArray(records) ? records : []).map(normalizeRecord)],
+                [this.KEYS.DIRTY_UIDS, []],
+                [this.KEYS.DIRTY_USER_IDS, []],
+                [this.KEYS.DELETED_UIDS, []]
+              ])
+              if (seeded) {
+                writeRaw(this.KEYS.INITIALIZED, 'true')
+                return
+              }
             }
           }
         }
@@ -187,14 +193,16 @@ const LocalStore = {
       }
     }
 
-    if (!localStorage.getItem(this.KEYS.USERS)) this.saveUsers(this.DEFAULT_USERS)
-    if (!localStorage.getItem(this.KEYS.RECORDS)) this.saveRecords([])
-    this.setDirtyUids(this.getDirtyUids())
     // 初期ユーザーは未pushにしない。サーバー側も同じ初期ユーザーを自分で作るので、
     // ここでpushするとサーバーで既に変更済みの名前を初期値で塗り潰してしまう
-    this.setDirtyUserIds([])
-    this.setDeletedUids(this.getDeletedUids())
-    writeRaw(this.KEYS.INITIALIZED, 'true')
+    const started = writeAll([
+      [this.KEYS.USERS, readJson(this.KEYS.USERS, null) || this.DEFAULT_USERS],
+      [this.KEYS.RECORDS, this.getAllRecords()],
+      [this.KEYS.DIRTY_UIDS, this.getDirtyUids()],
+      [this.KEYS.DIRTY_USER_IDS, []],
+      [this.KEYS.DELETED_UIDS, this.getDeletedUids()]
+    ])
+    if (started) writeRaw(this.KEYS.INITIALIZED, 'true')
   },
 
   // dirty集合を持たない旧バージョンから上がってきた端末では、
@@ -230,8 +238,8 @@ const LocalStore = {
       color_theme
     }
     users.push(user)
-    this.saveUsers(users)
-    this.markUserDirty(nextId)
+    // ユーザーと未push印をセットで書く。片方だけ残るとサーバーに伝わらない
+    if (!this.saveUsersAsDirty(users, nextId)) return null
     return user
   },
 
@@ -240,21 +248,18 @@ const LocalStore = {
     const user = users.find((u) => u.id === userId)
     if (!user) return null
     user.display_name = displayName
-    this.saveUsers(users)
-    this.markUserDirty(userId)
+    if (!this.saveUsersAsDirty(users, userId)) return null
     return user
+  },
+
+  saveUsersAsDirty(users, userId) {
+    const dirty = this.getDirtyUserIds()
+    if (!dirty.includes(Number(userId))) dirty.push(Number(userId))
+    return writeAll([[this.KEYS.USERS, users], [this.KEYS.DIRTY_USER_IDS, dirty]])
   },
 
   // ---- dirty集合（未送信のユーザー） ----
   // recordsと同じく、端末時計に依存しないよう時刻比較ではなく集合で管理する
-  markUserDirty(userId) {
-    const ids = this.getDirtyUserIds()
-    if (!ids.includes(Number(userId))) {
-      ids.push(Number(userId))
-      this.setDirtyUserIds(ids)
-    }
-  },
-
   getDirtyUserIds() {
     const ids = readJson(this.KEYS.DIRTY_USER_IDS, [])
     return Array.isArray(ids) ? ids.map(Number) : []
@@ -317,29 +322,30 @@ const LocalStore = {
     }
     const records = this.getAllRecords()
     records.push(record)
-    this.saveRecords(records)
-    // 未pushとして積む。これが次回の同期で送る対象になる
-    this.markDirty(record.uid)
+    // 記録本体と未push印（次回の同期で送る対象）は必ずセットで書く。
+    // 保存できなければnullを返し、呼び出し側に成功として扱わせない
+    const dirty = this.getDirtyUids()
+    if (!dirty.includes(record.uid)) dirty.push(record.uid)
+    if (!writeAll([[this.KEYS.RECORDS, records], [this.KEYS.DIRTY_UIDS, dirty]])) return null
     return record
   },
 
+  // 削除できたらtrueを返す。
+  // 記録の削除とtombstoneがずれると、消したはずの記録が次の同期で復活する
   removeRecord(uid) {
-    this.saveRecords(this.getAllRecords().filter((r) => r.uid !== uid))
+    const records = this.getAllRecords().filter((r) => r.uid !== uid)
     // 消した記録を送る必要はない。削除はtombstone側で伝える
-    this.setDirtyUids(this.getDirtyUids().filter((u) => u !== uid))
-    this.trackDeletedUid(uid)
+    const dirty = this.getDirtyUids().filter((u) => u !== uid)
+    const deleted = this.getDeletedUids()
+    if (uid && !deleted.includes(uid)) deleted.push(uid)
+    return writeAll([
+      [this.KEYS.RECORDS, records],
+      [this.KEYS.DIRTY_UIDS, dirty],
+      [this.KEYS.DELETED_UIDS, deleted]
+    ])
   },
 
   // ---- tombstone（削除済みuid） ----
-  trackDeletedUid(uid) {
-    if (!uid) return
-    const uids = this.getDeletedUids()
-    if (!uids.includes(uid)) {
-      uids.push(uid)
-      this.setDeletedUids(uids)
-    }
-  },
-
   getDeletedUids() {
     const uids = readJson(this.KEYS.DELETED_UIDS, [])
     return Array.isArray(uids) ? uids : []
@@ -352,15 +358,6 @@ const LocalStore = {
   // ---- dirty集合（サーバーに未送信のuid） ----
   // updated_at（端末時計）とlastSync（サーバー時計）は基準が違って比較できないため、
   // 差分pushの対象は時刻ではなくこの集合で管理する
-  markDirty(uid) {
-    if (!uid) return
-    const uids = this.getDirtyUids()
-    if (!uids.includes(uid)) {
-      uids.push(uid)
-      this.setDirtyUids(uids)
-    }
-  },
-
   getDirtyUids() {
     const uids = readJson(this.KEYS.DIRTY_UIDS, [])
     return Array.isArray(uids) ? uids : []
@@ -642,7 +639,8 @@ function addUser() {
     alert('名前を入力してください')
     return
   }
-  LocalStore.addUser({ display_name: trimmed })
+  // 保存できなかったときは警告トーストが出ているので、ここでは追加しなかったことにする
+  if (!LocalStore.addUser({ display_name: trimmed })) return
   loadUsers()
   loadMonth()
   requestSync()
@@ -659,7 +657,7 @@ function renameUser() {
     return
   }
   if (trimmed === user.display_name) return
-  LocalStore.updateUserName(user.id, trimmed)
+  if (!LocalStore.updateUserName(user.id, trimmed)) return
   loadUsers()
   requestSync()
 }
@@ -770,8 +768,10 @@ function collectFormData(containerEl) {
 }
 
 // 記録はまずローカルに書き、そのあとサーバー同期を予約する（ローカルファースト）
+// 保存できなかったときはnullを返す（警告トーストはLocalStore側で出ている）
 function createRecord({ user_id, type, record_date, record_time, data, notes }) {
   const record = LocalStore.addRecord({ user_id, type, record_date, record_time, data, notes })
+  if (!record) return null
   requestSync()
   return record
 }
@@ -800,7 +800,8 @@ async function renderDayRecords(containerEl, date) {
   containerEl.querySelectorAll('.del-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('この記録を削除しますか？')) return
-      LocalStore.removeRecord(btn.dataset.uid)
+      // 消せなかったときは警告トーストが出ている。一覧はそのまま残る
+      if (!LocalStore.removeRecord(btn.dataset.uid)) return
       requestSync()
       await renderDayRecords(containerEl, targetDate)
       loadMonth()
@@ -860,7 +861,7 @@ async function submitRecord(e) {
   e.preventDefault()
   const data = collectFormData($('form-fields'))
   try {
-    createRecord({
+    const record = createRecord({
       user_id: state.userId,
       type: state.formType,
       record_date: state.selectedDate,
@@ -868,6 +869,9 @@ async function submitRecord(e) {
       data,
       notes: $('record-notes').value || null
     })
+    // 保存できていないので、フォームは閉じずに入力内容を残す
+    // （警告トーストを上書きしないよう、ここでは何も表示しない）
+    if (!record) return
     hideForm()
     await renderDayRecords($('day-records'), state.selectedDate)
     loadMonth()
@@ -926,7 +930,7 @@ async function submitEntryRecord(e) {
     // ローカルファースト化にともない、記録日時はクライアント側で確定させる
     // （サーバー時刻が取れればそれを使い、オフラインなら端末の時計を使う）
     const now = await fetchNow()
-    createRecord({
+    const record = createRecord({
       user_id: state.userId,
       type: state.entryType,
       record_date: now.date,
@@ -934,6 +938,8 @@ async function submitEntryRecord(e) {
       data,
       notes: $('entry-notes').value || null
     })
+    // 保存できていないのに「記録しました」を出すと、警告トーストを上書きしてしまう
+    if (!record) return
     hideEntryForm()
     showToast(`${t.icon} ${t.name}を記録しました`)
     await renderEntryDayRecords()
@@ -1060,12 +1066,23 @@ async function triggerSync() {
     }
     LocalStore.clearPushFailures([...accepted.uids])
 
+    // 差し引きとlastSyncもまとめて書く。片方だけ残ると、送ったのに送り直す・
+    // 送っていないのに送った扱いにする、といったずれが起きる
     const pushedDeletedSet = new Set(pushedDeletedUids)
-    LocalStore.setDeletedUids(LocalStore.getDeletedUids().filter((u) => !pushedDeletedSet.has(u)))
-    LocalStore.setDirtyUids(LocalStore.getDirtyUids().filter((u) => !dirtySet.has(u) || keepDirty.has(u)))
-    LocalStore.setDirtyUserIds(LocalStore.getDirtyUserIds().filter((id) => !accepted.userIds.has(Number(id))))
-    state.lastSync = Number(result.timestamp) || Date.now()
-    writeRaw(LocalStore.KEYS.LAST_SYNC, String(state.lastSync))
+    const nextLastSync = Number(result.timestamp) || Date.now()
+    const committed = writeAll([
+      [LocalStore.KEYS.DELETED_UIDS, LocalStore.getDeletedUids().filter((u) => !pushedDeletedSet.has(u))],
+      [LocalStore.KEYS.DIRTY_UIDS, LocalStore.getDirtyUids().filter((u) => !dirtySet.has(u) || keepDirty.has(u))],
+      [LocalStore.KEYS.DIRTY_USER_IDS, LocalStore.getDirtyUserIds().filter((id) => !accepted.userIds.has(Number(id)))],
+      [LocalStore.KEYS.LAST_SYNC, nextLastSync]
+    ])
+    if (!committed) {
+      // 取り込んだ内容は画面に出したいが、同期は完了していない（次回もう一度やり直す）
+      refreshAfterSync()
+      setSyncStatus('offline')
+      return
+    }
+    state.lastSync = nextLastSync
     refreshAfterSync()
     setSyncStatus('synced')
   } catch {
