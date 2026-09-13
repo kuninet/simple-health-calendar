@@ -1,4 +1,4 @@
-const CACHE_NAME = 'health-calendar-v5'
+const CACHE_NAME = 'health-calendar-v6'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -24,13 +24,15 @@ self.addEventListener('fetch', (event) => {
   // APIはネットワーク優先。1秒で打ち切り、オフライン用のJSONを返す
   // （画面側はこれを見てローカルデータのまま動き続ける）
   if (url.pathname.startsWith('/api/')) {
-    // /api/sync だけは記録を往復する重い処理なので打ち切らない。
-    // 1秒で中断すると、サーバーはコミット済みなのにクライアントは失敗扱いになり、
-    // 未送信の記録と削除を抱えたまま重い同期を繰り返すことになる
-    const isSync = url.pathname === '/api/sync'
+    // 書き込み（POST /api/sync、POST /api/users）は打ち切らない。
+    // 1秒で中断すると、サーバーはコミット済みなのにクライアントは失敗扱いになる。
+    // 同期なら未送信のまま重い往復を繰り返すことになり、
+    // ユーザー追加ならクライアントが知らないユーザーがサーバーにだけ残る。
+    // 打ち切りの目的は読み取りで画面を待たせないことなので、GET以外は対象外にする
+    const isWrite = event.request.method !== 'GET'
     event.respondWith((async () => {
       const controller = new AbortController()
-      const timer = isSync ? null : setTimeout(() => controller.abort(), 1000)
+      const timer = isWrite ? null : setTimeout(() => controller.abort(), 1000)
       try {
         const response = await fetch(event.request, { signal: controller.signal })
         clearTimeout(timer)

@@ -105,12 +105,12 @@ const state = {
 const $ = (id) => document.getElementById(id)
 
 // ---- API ----
-// タイムアウト付きのGET。オフラインでもUIを待たせないために使う
-async function fetchWithTimeout(url, ms) {
+// タイムアウト付きのfetch。オフラインでもUIを待たせないために使う
+async function fetchWithTimeout(url, ms, options) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
   try {
-    return await fetch(url, { signal: controller.signal })
+    return await fetch(url, { ...options, signal: controller.signal })
   } finally {
     clearTimeout(timer)
   }
@@ -228,19 +228,35 @@ const LocalStore = {
     return writeJson(this.KEYS.USERS, users)
   },
 
-  addUser({ display_name, color_theme = 'teal' }) {
-    const users = this.getUsers()
-    const nextId = users.reduce((max, u) => Math.max(max, Number(u.id) || 0), 0) + 1
-    const user = {
-      id: nextId,
-      username: `user_${nextId}_${Date.now()}`,
-      display_name,
-      color_theme
+  // ユーザー追加はオンライン限定。idはサーバーのAUTOINCREMENTに決めさせる。
+  // ローカルで採番すると、2台が互いの同期を挟まずに追加したとき同じidになり、
+  // 2人が1行に融合して記録が混ざる（どちらの端末も気づけない）
+  // 追加できたら { user }、できなければ理由を添えて { reason } を返す
+  async addUser({ display_name, color_theme = 'teal' }) {
+    // 繋がっていないと分かっているならタイムアウトを待たずに返す
+    if (!navigator.onLine) return { reason: 'offline' }
+    // usernameはid採番の前に決める必要があるため、idに依存しない形にする
+    const username = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    let created
+    try {
+      const res = await fetchWithTimeout('/api/users', 3000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, display_name, color_theme })
+      })
+      if (!res.ok) return { reason: 'offline' }
+      created = await res.json()
+    } catch {
+      return { reason: 'offline' }
     }
+    if (!created || !Number.isFinite(Number(created.id))) return { reason: 'offline' }
+
+    const user = { id: Number(created.id), username, display_name, color_theme }
+    const users = this.getUsers()
     users.push(user)
-    // ユーザーと未push印をセットで書く。片方だけ残るとサーバーに伝わらない
-    if (!this.saveUsersAsDirty(users, nextId)) return null
-    return user
+    // サーバーには既に入っているので未push印は積まない
+    if (!this.saveUsers(users)) return { reason: 'storage' }
+    return { user }
   },
 
   updateUserName(userId, displayName) {
@@ -631,7 +647,16 @@ function bindEvents() {
   })
 }
 
-function addUser() {
+// ユーザー追加はサーバーにidを決めてもらう必要があるため、オフラインでは行えない
+const ADD_USER_OFFLINE_MESSAGE = 'ユーザーの追加はWi-Fi接続時のみ行えます。\n接続してから、もう一度お試しください。'
+
+async function addUser() {
+  // ボタンは同期ステータスに合わせて無効にしてあるが、
+  // 「オンラインだがサーバーだけ落ちている」状態もあるので押されたときにも確かめる
+  if (state.syncStatus === 'offline') {
+    alert(ADD_USER_OFFLINE_MESSAGE)
+    return
+  }
   const name = prompt('新しいユーザーの名前を入力してください')
   if (!name) return
   const trimmed = name.trim()
@@ -639,8 +664,12 @@ function addUser() {
     alert('名前を入力してください')
     return
   }
-  // 保存できなかったときは警告トーストが出ているので、ここでは追加しなかったことにする
-  if (!LocalStore.addUser({ display_name: trimmed })) return
+  const { user, reason } = await LocalStore.addUser({ display_name: trimmed })
+  // 端末に保存できなかったときは警告トーストが出ているので、ここでは何も言わない
+  if (!user) {
+    if (reason === 'offline') alert(ADD_USER_OFFLINE_MESSAGE)
+    return
+  }
   loadUsers()
   loadMonth()
   requestSync()
@@ -977,6 +1006,12 @@ function bindSyncEvents() {
 
 function setSyncStatus(status) {
   state.syncStatus = status
+  // ユーザー追加はサーバーのid採番が要るので、繋がっていない間は押せないようにする
+  const addBtn = $('add-user-btn')
+  if (addBtn) {
+    addBtn.disabled = status === 'offline'
+    addBtn.title = addBtn.disabled ? 'ユーザー追加（Wi-Fi接続時のみ）' : 'ユーザー追加'
+  }
   const el = $('sync-status')
   if (!el) return
   el.className = `sync-status-badge ${status}`
