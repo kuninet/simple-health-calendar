@@ -131,6 +131,9 @@ select, input[type="text"], input[type="number"], input[type="time"], input[type
   cursor: pointer;
 }
 .icon-btn:hover { background: var(--bg); }
+/* ユーザー追加はサーバーに繋がっているときだけ行える */
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: var(--card); }
 
 /* ---- タブ ---- */
 .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
