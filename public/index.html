@@ -18,6 +18,10 @@
   <header class="app-header">
     <h1>🩺 体調記録カレンダー</h1>
     <div class="user-area">
+      <div id="sync-status" class="sync-status-badge offline" title="サーバー未接続のため、端末内のデータで動作中">
+        <span class="sync-status-dot"></span>
+        <span class="sync-status-text">ローカル動作中</span>
+      </div>
       <select id="user-select" aria-label="ユーザー選択"></select>
       <button id="edit-user-btn" class="icon-btn" title="ユーザー名を変更">✎</button>
       <button id="add-user-btn" class="icon-btn" title="ユーザー追加">＋</button>

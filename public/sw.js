@@ -1,4 +1,4 @@
-const CACHE_NAME = 'health-calendar-v3'
+const CACHE_NAME = 'health-calendar-v5'
 const urlsToCache = [
   '/',
   '/index.html',
@@ -10,6 +10,7 @@ const urlsToCache = [
   '/icon-512.png'
 ]
 
+// インストール時に静的アセットを入れておく（Cache-First用）
 self.addEventListener('install', (event) => {
   self.skipWaiting()
   event.waitUntil(
@@ -18,32 +19,63 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  // APIはネットワーク優先（記録データは常に最新を取りに行く）
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response(JSON.stringify({ error: 'オフラインです' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        })
-      )
-    )
+  const url = new URL(event.request.url)
+
+  // APIはネットワーク優先。1秒で打ち切り、オフライン用のJSONを返す
+  // （画面側はこれを見てローカルデータのまま動き続ける）
+  if (url.pathname.startsWith('/api/')) {
+    // /api/sync だけは記録を往復する重い処理なので打ち切らない。
+    // 1秒で中断すると、サーバーはコミット済みなのにクライアントは失敗扱いになり、
+    // 未送信の記録と削除を抱えたまま重い同期を繰り返すことになる
+    const isSync = url.pathname === '/api/sync'
+    event.respondWith((async () => {
+      const controller = new AbortController()
+      const timer = isSync ? null : setTimeout(() => controller.abort(), 1000)
+      try {
+        const response = await fetch(event.request, { signal: controller.signal })
+        clearTimeout(timer)
+        return response
+      } catch {
+        clearTimeout(timer)
+        return new Response(
+          JSON.stringify({
+            success: false,
+            offline: true,
+            status: 'offline',
+            error: 'オフラインのためローカルモードで動作中'
+          }),
+          {
+            status: 503,
+            statusText: 'Service Unavailable (Offline)',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' }
+          }
+        )
+      }
+    })())
     return
   }
-  // 静的ファイルもネットワーク優先（更新をすぐ反映）、オフライン時はキャッシュ
+
+  // 静的ファイルはキャッシュ優先。オフラインでも即座に起動させるため
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // 正常なレスポンスだけをキャッシュする（エラーページを保存しない）
-        if (response.ok && response.type === 'basic') {
-          const copy = response.clone()
-          caches.open(CACHE_NAME)
-            .then((cache) => cache.put(event.request, copy))
-            .catch(() => {})
-        }
-        return response
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached
+      return fetch(event.request)
+        .then((response) => {
+          // 正常なGETレスポンスだけをキャッシュする（エラーページを保存しない）
+          if (response && response.status === 200 && event.request.method === 'GET') {
+            const copy = response.clone()
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put(event.request, copy))
+              .catch(() => {})
+          }
+          return response
+        })
+        .catch(() => {
+          // 画面リロードなどのナビゲーションはindex.htmlで受ける
+          if (event.request.mode === 'navigate') return caches.match('/index.html')
+          return Response.error()
+        })
+    })
   )
 })
 
